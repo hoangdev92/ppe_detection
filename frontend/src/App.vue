@@ -90,8 +90,18 @@ export default {
       this.ws.onclose = () => console.log('ws closed');
     },
 
-    useWebcam() {
+    async useWebcam() {
       this.mode = 'webcam';
+      const v = this.$refs.video;
+      try {
+        const constraints = { video: { width: 640, height: 480 } };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        v.srcObject = stream;
+        await v.play();
+        this.prepareSendSize();
+      } catch (err) {
+        alert('Không thể mở webcam: ' + err.message);
+      }
     },
     async useUrl() {
       if (!this.videoUrl) return alert('Nhập URL video trước');
@@ -152,17 +162,7 @@ export default {
 
     async start() {
       const v = this.$refs.video;
-      if (this.mode === 'webcam') {
-        try {
-          const constraints = { video: { width: 640, height: 480 } };
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          v.srcObject = stream;
-          await v.play();
-        } catch (err) {
-          alert('Không thể mở webcam: ' + err.message);
-          return;
-        }
-      } else if (this.mode === null) {
+      if (this.mode === null) {
         alert('Chọn webcam, upload video, hoặc nhập URL trước');
         return;
       }
