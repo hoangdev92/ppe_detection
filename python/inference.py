@@ -23,7 +23,7 @@ except Exception:
 def load_model():
     # Example if you use ultralytics YOLO:
     from ultralytics import YOLO
-    model = YOLO('ppe_yolov11/weights/best.pt')
+    model = YOLO('ppe_yolov11_v2/weights/best.pt')
     return model
     
     # If you use a custom YOLOv11 loader, load it here and return object with .predict(image) -> detections

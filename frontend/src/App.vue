@@ -100,6 +100,7 @@ export default {
         await v.play();
         this.prepareSendSize();
       } catch (err) {
+        this.mode = null;
         alert('Không thể mở webcam: ' + err.message);
       }
     },
