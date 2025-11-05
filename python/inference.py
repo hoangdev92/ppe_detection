@@ -23,7 +23,7 @@ except Exception:
 def load_model():
     # Example if you use ultralytics YOLO:
     from ultralytics import YOLO
-    model = YOLO('ppe_yolov11_v2/weights/best.pt')
+    model = YOLO('ppe_yolov11_v5/weights/best.pt')
     return model
     
     # If you use a custom YOLOv11 loader, load it here and return object with .predict(image) -> detections
@@ -102,22 +102,43 @@ def main():
                 sys.stdout.flush()
                 continue
 
-            # ----- RUN INFERENCE: ADAPT to your model's API --------
-            # Example pseudocode with ultralytics:
-
-            # ----- RUN INFERENCE (tracking enable persist) --------
-                        # ----- RUN INFERENCE (tracking) -----
+            # ----- RUN INFERENCE WITH TRACKING -----
+            # Choose tracker: 'bytetrack.yaml' (simpler, faster) or 'botsort.yaml' (with ReID)
             tracker_cfg = os.path.join(os.path.dirname(__file__), 'trackers', 'botsort.yaml')
-            with redirect_stdout(sys.stderr):
-                results = model.track(
-                  img,
-                  imgsz=640,
-                  conf=0.25,
-                  persist=True,
-                  verbose=False,
-                  tracker=tracker_cfg
-                )
-            # ------------------------------------
+            
+            # Fallback: if tracker file not found or fails, use default tracking
+            try:
+                if os.path.isfile(tracker_cfg):
+                    with redirect_stdout(sys.stderr):
+                        results = model.track(
+                            img,
+                            imgsz=640,
+                            conf=0.25,
+                            persist=True,
+                            verbose=False,
+                            tracker=tracker_cfg
+                        )
+                else:
+                    # Fallback: use default tracker (no custom config)
+                    with redirect_stdout(sys.stderr):
+                        results = model.track(
+                            img,
+                            imgsz=640,
+                            conf=0.25,
+                            persist=True,
+                            verbose=False
+                        )
+            except Exception as track_err:
+                # If tracking fails, fall back to simple predict (no tracking IDs)
+                sys.stderr.write(f"Tracking failed: {track_err}, using predict instead\n")
+                with redirect_stdout(sys.stderr):
+                    results = model.predict(
+                        img,
+                        imgsz=640,
+                        conf=0.25,
+                        verbose=False
+                    )
+            # ----------------------------------------
             boxes = detections_to_boxes(results, model)
             out = {"clientId": clientId, "boxes": boxes}
             sys.stdout.write(json.dumps(out) + "\n")

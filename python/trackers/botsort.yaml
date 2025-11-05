@@ -1,25 +1,28 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-# BoT-SORT tracker defaults for mode="track"
+# BoT-SORT tracker optimized for PPE detection
 # Docs: https://docs.ultralytics.com/modes/track/
 
-tracker_type: botsort # (str) Tracker backend: botsort|bytetrack; choose botsort to enable BoT-SORT features
-track_high_thresh: 0.5 # (float) First-stage match threshold; raise for cleaner tracks, lower to keep more
-track_low_thresh: 0.1 # (float) Second-stage threshold for low-score matches; balances recovery vs drift
-new_track_thresh: 0.6 # (float) Start a new track if no match ≥ this; higher reduces false tracks
-track_buffer: 30 # (int) Frames to keep lost tracks alive; higher handles occlusion, increases ID switches risk
-match_thresh: 0.8 # (float) Association similarity threshold (IoU/cost); tune with detector quality
-fuse_score: True # (bool) Fuse detection score with motion/IoU for matching; stabilizes weak detections
+tracker_type: botsort
 
-# BoT-SORT specifics
-gmc_method: sparseOptFlow # (str) Global motion compensation: sparseOptFlow|orb|none; helps moving camera scenes
+# Detection thresholds - tuned for person tracking
+track_high_thresh: 0.4      # Higher = more confident tracks (reduce false positives)
+track_low_thresh: 0.15      # Allow second-stage recovery of lower-confidence detections
+new_track_thresh: 0.5       # Higher = fewer spurious new tracks
 
-# ReID model related thresh
-proximity_thresh: 0.5 # (float) Min IoU to consider tracks proximate for ReID; higher is stricter
-appearance_thresh: 0.25 # (float) Min appearance similarity for ReID; raise to avoid identity swaps
-with_reid: true # (bool) Enable ReID model use; needs extra model and compute
-gmc_method: none
-model: auto # (str) ReID model name/path; "auto" uses detector features if available
-# Aging
-max_age: 30
-min_hits: 3
+# Track management
+track_buffer: 50            # Keep tracks longer (good for occlusions/people moving)
+match_thresh: 0.7           # Lower = more lenient matching (better for moving people)
+fuse_score: true            # Combine detection confidence with tracking
+
+# Motion compensation (for static camera, use 'none'; for moving camera use 'sparseOptFlow')
+gmc_method: none            # Static camera - no global motion compensation needed
+
+# ReID - appearance-based re-identification
+with_reid: false            # Disable ReID to avoid dependency issues; use IoU + motion instead
+proximity_thresh: 0.5       # Min IoU for proximity matching
+appearance_thresh: 0.25     # ReID similarity threshold (not used when with_reid=false)
+
+# Track lifecycle
+max_age: 50                 # Frames before deleting lost track (higher = more stable IDs)
+min_hits: 3                 # Minimum detections before confirming track (reduce false starts)

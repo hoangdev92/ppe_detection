@@ -1,0 +1,16 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+# ByteTrack tracker optimized for PPE detection (simpler, no ReID)
+# Docs: https://docs.ultralytics.com/modes/track/
+
+tracker_type: bytetrack
+
+# Detection thresholds
+track_high_thresh: 0.4      # High confidence detections (first association round)
+track_low_thresh: 0.15      # Low confidence detections (second association round)
+new_track_thresh: 0.5       # Threshold to start new track
+
+# Track management
+track_buffer: 50            # Keep lost tracks for 50 frames (handles occlusions)
+match_thresh: 0.7           # IoU threshold for matching (lower = more lenient)
+fuse_score: true            # Fuse detection score with IoU for better matching

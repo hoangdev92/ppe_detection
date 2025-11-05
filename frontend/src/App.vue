@@ -31,6 +31,26 @@
       <button @click="start" :disabled="running">Start</button>
       <button @click="stop" :disabled="!running">Stop</button>
     </div>
+
+    <div style="margin-top:12px; padding:12px; background:#f5f5f5; border-radius:4px; max-height:200px; overflow-y:auto;">
+      <h4 style="margin:0 0 8px 0; font-size:14px; color:#333;">PPE Violations Alerts:</h4>
+      <div v-if="violations.length === 0" style="color:#999; font-style:italic; font-size:12px;">
+        No violations detected
+      </div>
+      <div v-for="(violation, idx) in violations" :key="idx" 
+           style="padding:8px; margin-bottom:6px; background:#fff; border-left:4px solid #F44336; border-radius:2px; font-size:12px;">
+        <div style="color:#666; margin-bottom:4px;">
+          <strong style="color:#333;">{{ formatTime(violation.timestamp) }}</strong>
+          <span style="margin-left:8px; color:#999;">Track ID: {{ violation.trackId }}</span>
+        </div>
+        <div style="color:#F44336; font-weight:bold;">
+          Missing: {{ violation.missingItems.join(', ') }}
+        </div>
+        <div v-if="violation.duration" style="color:#999; font-size:11px; margin-top:4px;">
+          Duration: {{ (violation.duration / 1000).toFixed(1) }}s
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -49,6 +69,7 @@ export default {
       fileUrl: null,
       videoUrl: '',
       pendingMeta: false,
+      violations: [], // Array to store violation alerts
     };
   },
   unmounted() {
@@ -81,7 +102,22 @@ export default {
           } else if (msg.type === 'violation') {
             const txt = `Thiếu PPE: ${msg.missingItems.join(', ')} (tracks: ${Array.isArray(msg.tracks) ? msg.tracks.join(',') : '-'})`;
             console.warn(txt);
-            // alert(txt); // hoặc thay bằng toast UI
+            
+            // Add violation to alerts list
+            const trackIds = Array.isArray(msg.tracks) ? msg.tracks : [];
+            trackIds.forEach(trackId => {
+              this.violations.unshift({
+                timestamp: new Date(),
+                trackId: trackId,
+                missingItems: msg.missingItems || [],
+                duration: msg.duration || null
+              });
+            });
+            
+            // Keep only last 50 violations to prevent memory issues
+            if (this.violations.length > 50) {
+              this.violations = this.violations.slice(0, 50);
+            }
           }
         } catch(e) {
           console.warn('non-json ws msg', e);
@@ -212,6 +248,17 @@ export default {
       }, 100);
     },
 
+    formatTime(date) {
+      if (!date) return '';
+      const d = new Date(date);
+      return d.toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      });
+    },
+
     prepareSendSize() {
       const v = this.$refs.video;
       const vw = v.videoWidth || 640;
@@ -231,11 +278,41 @@ export default {
       if (!this.running) return; // prevent drawing when stopped
       const overlay = this.$refs.overlay;
       const ctx = overlay.getContext('2d');
+      const classColors = {
+        helmet: '#00E676',        // Bright green
+        gloves: '#2196F3',        // Bright blue
+        vest: '#FF6F00',          // Bright orange
+        boots: '#FFD600',         // Bright yellow
+        goggles: '#E91E63',       // Bright pink
+        none: '#9E9E9E',          // Light gray
+        Person: '#9C27B0',        // Bright purple
+        no_helmet: '#FF1744',     // Bright red
+        no_goggle: '#FF4081',     // Bright pink
+        no_gloves: '#4CAF50',     // Green
+        no_boots: '#FFC107',      // Amber
+        mask: '#9C27B0',          // Purple
+        no_mask: '#FF5722',       // Deep orange
+        no_vest: '#F44336',       // Red
+      };
+      const classNames = {
+        0: 'helmet',
+        1: 'gloves',
+        2: 'vest',
+        3: 'boots',
+        4: 'goggles',
+        5: 'none',
+        6: 'Person',
+        7: 'no_helmet',
+        8: 'no_goggle',
+        9: 'no_gloves',
+        10: 'no_boots',
+        11: 'mask',
+        12: 'no_mask',
+        13: 'no_vest',
+      };
       ctx.clearRect(0,0,overlay.width, overlay.height);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = 'red';
       ctx.font = '16px Arial';
-      ctx.fillStyle = 'red';
 
       // Tính content rect (khu vực video thật sự hiển thị bên trong khung overlay)
       const v = this.$refs.video;
@@ -255,6 +332,7 @@ export default {
       // Box đang ở hệ toạ độ sendWidth/sendHeight -> scale sang contentW/contentH rồi cộng offset
       const scaleX = contentW / this.sendWidth;
       const scaleY = contentH / this.sendHeight;
+      // console.log('boxes', boxes);
 
       boxes.forEach(b => {
         const x = offsetX + b.x1 * scaleX;
@@ -262,8 +340,10 @@ export default {
         const w = (b.x2 - b.x1) * scaleX;
         const h = (b.y2 - b.y1) * scaleY;
 
+        ctx.strokeStyle = classColors[classNames[b.class]] || 'red';
+        ctx.fillStyle = classColors[classNames[b.class]] || 'red';
         ctx.strokeRect(x, y, w, h);
-        const label = `${b.class ?? 'obj'} ${(b.conf ?? 0).toFixed(2)}`;
+        const label = `${classNames[b.class] ?? 'obj'}_id_${(b.class ?? 'id_null')}`;
         ctx.fillText(label, x + 2, y + 16);
       });
     }

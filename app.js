@@ -56,14 +56,11 @@ py.stdout.on('data', (chunk) => {
         // break;
         ws.send(JSON.stringify({ type: 'inference', boxes }));
 
-        // === One-time alert per trackId and missing-set ===
-        const people = boxes.filter(b => (b.name === 'person') || b.class === 3);
-        const itemsBy = {
-          helmet: boxes.filter(b => b.name === 'helmet'),
-          vest:   boxes.filter(b => b.name === 'vest'),
-          glove:  boxes.filter(b => b.name === 'glove'),
-          boots:  boxes.filter(b => b.name === 'boots'),
-        };
+        // === Alert only if 'no_*' classes detected for same person >= 10 seconds ===
+        const people = boxes.filter(b => (b.name === 'Person' || b.name === 'person') || b.class === 3);
+        // Filter only boxes with class name starting with 'no_'
+        const noPpeBoxes = boxes.filter(b => b.name && b.name.startsWith('no_'));
+        
         const iou = (a,b) => {
           const x1 = Math.max(a.x1, b.x1), y1 = Math.max(a.y1, b.y1);
           const x2 = Math.min(a.x2, b.x2), y2 = Math.min(a.y2, b.y2);
@@ -74,35 +71,67 @@ py.stdout.on('data', (chunk) => {
           return uni > 0 ? inter/uni : 0;
         };
 
-        const CLASS_REQUIRED = ['helmet','vest','glove','boots'];
+        const MIN_VIOLATION_DURATION_MS = 5_000; // 5 seconds
         const m = getClientMap(clientId);
         cleanupClientMap(m);
 
+        const now = Date.now();
         const newAlerts = [];
+
         for (const p of people) {
           const tid = p.id; // track id from YOLO tracking
           if (tid == null) continue;
 
-          const missing = [];
-          for (const name of CLASS_REQUIRED) {
-            const arr = itemsBy[name] || [];
-            const ok = arr.some(it => iou(p, it) >= 0.1);
-            if (!ok) missing.push(name);
+          // Find all 'no_*' boxes that overlap with this person
+          const missingTypes = [];
+          for (const noBox of noPpeBoxes) {
+            if (iou(p, noBox) >= 0.1) {
+              missingTypes.push(noBox.name); // e.g., 'no_helmet', 'no_gloves', etc.
+            }
           }
 
-          const state = m.get(tid) || {};
-          state.lastSeen = Date.now();
-          if (!missing.length) {
+          const state = m.get(tid) || {
+            lastSeen: now,
+            missingStartTime: null,
+            missingKey: '',
+            alerted: false
+          };
+          state.lastSeen = now;
+
+          if (!missingTypes.length) {
+            // Person is compliant - reset tracking
+            state.missingStartTime = null;
             state.missingKey = '';
+            state.alerted = false;
             m.set(tid, state);
             continue;
           }
 
-          const key = missing.slice().sort().join(',');
+          // Create a key from sorted missing types
+          const key = missingTypes.slice().sort().join(',');
+
+          // If missing set changed, reset timer
           if (state.missingKey !== key) {
+            state.missingStartTime = now;
             state.missingKey = key;
+            state.alerted = false;
             m.set(tid, state);
-            newAlerts.push({ trackId: tid, missingItems: missing });
+            continue;
+          }
+
+          // Same missing set - check if we need to start timer
+          if (state.missingStartTime === null) {
+            state.missingStartTime = now;
+            m.set(tid, state);
+            continue;
+          }
+
+          // Check if duration >= 10 seconds and not already alerted
+          const duration = now - state.missingStartTime;
+          if (duration >= MIN_VIOLATION_DURATION_MS && !state.alerted) {
+            state.alerted = true;
+            m.set(tid, state);
+            newAlerts.push({ trackId: tid, missingItems: missingTypes, duration: duration });
           }
         }
 
@@ -112,7 +141,8 @@ py.stdout.on('data', (chunk) => {
             type: 'violation',
             clientId,
             missingItems: allMissing,
-            tracks: newAlerts.map(a => a.trackId)
+            tracks: newAlerts.map(a => a.trackId),
+            duration: newAlerts[0].duration
           }));
 
           // (async () => {
